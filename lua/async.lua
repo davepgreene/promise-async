@@ -1,19 +1,26 @@
-local promise = require('promise')
-local utils = require('promise-async.utils')
-local compat = require('promise-async.compat')
+-- assuming lewis6991/async.nvim is available, use it directly,
+-- otherwise fallback to promise-async implementation
+local loaded, async = pcall(require, "async")
+if loaded then
+    return async.run
+end
 
-local asyncId = {'promise-async'}
+local promise = require("promise")
+local utils = require("promise-async.utils")
+local compat = require("promise-async.compat")
+
+local asyncId = { "promise-async" }
 
 ---@class Async
-local Async = setmetatable({_id = asyncId}, {
+local Async = setmetatable({ _id = asyncId }, {
     __call = function(self, executor)
         return self.sync(executor)
-    end
+    end,
 })
 
 local packedId = {}
 
-local Packed = {_id = packedId}
+local Packed = { _id = packedId }
 Packed.__index = Packed
 
 local function wrapPacked(packed)
@@ -21,26 +28,29 @@ local function wrapPacked(packed)
 end
 
 local function hasPacked(o)
-    return type(o) == 'table' and o._id == packedId
+    return type(o) == "table" and o._id == packedId
 end
 
 local function injectENV(fn)
-    compat.setfenv(fn, setmetatable({
-        await = Async.wait,
-        pcall = compat.pcall,
-        xpcall = compat.xpcall
-    }, {
-        __index = compat.getfenv(fn)
-    }))
+    compat.setfenv(
+        fn,
+        setmetatable({
+            await = Async.wait,
+            pcall = compat.pcall,
+            xpcall = compat.xpcall,
+        }, {
+            __index = compat.getfenv(fn),
+        })
+    )
 end
 
 function Async.sync(executor)
     local typ = type(executor)
     local isCallable, fn = utils.getCallable(executor, typ)
-    assert(isCallable, 'a callable table or function expected, got ' .. typ)
+    assert(isCallable, "a callable table or function expected, got " .. typ)
     injectENV(fn)
     return promise:new(function(resolve, reject)
-        local co = coroutine.create(typ == 'function' and executor or function()
+        local co = coroutine.create(typ == "function" and executor or function()
             return executor()
         end)
 
@@ -49,13 +59,13 @@ function Async.sync(executor)
                 local reason = select(1, ...)
                 reject(debug.traceback(co, reason))
                 return
-            elseif coroutine.status(co) == 'dead' then
+            elseif coroutine.status(co) == "dead" then
                 local value
-                local n = select('#', ...)
+                local n = select("#", ...)
                 if n == 1 then
                     value = select(1, ...)
                 elseif n > 1 then
-                    value = wrapPacked({...})
+                    value = wrapPacked({ ... })
                 end
                 resolve(value)
                 return
